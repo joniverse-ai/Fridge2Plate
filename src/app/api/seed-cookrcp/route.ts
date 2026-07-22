@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+
+export const maxDuration = 60;
 
 const COOKRCP_API_KEY = process.env.COOKRCP_API_KEY;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -30,7 +32,7 @@ function parseIngredients(raw: string) {
     });
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const adminSecret = process.env.ADMIN_SECRET;
   if (!adminSecret || authHeader !== `Bearer ${adminSecret}`) {
@@ -54,95 +56,100 @@ export async function POST(request: Request) {
     );
   }
 
+  const pageParam = parseInt(request.nextUrl.searchParams.get("page") || "1", 10);
+  const batchSize = 50;
+  const start = (pageParam - 1) * batchSize + 1;
+  const end = start + batchSize - 1;
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  let inserted = 0;
-  const pageSize = 100;
+  const encodedKey = encodeURIComponent(COOKRCP_API_KEY);
+  const url = `https://openapi.foodsafetykorea.go.kr/api/${encodedKey}/COOKRCP01/json/${start}/${end}`;
 
-  for (let start = 1; start <= 1000; start += pageSize) {
-    const end = start + pageSize - 1;
-    const encodedKey = encodeURIComponent(COOKRCP_API_KEY);
-    const url = `https://openapi.foodsafetykorea.go.kr/api/${encodedKey}/COOKRCP01/json/${start}/${end}`;
-
-    const res = await fetch(url);
-    if (!res.ok) {
-      return NextResponse.json({
-        error: "외부 API 요청에 실패했습니다.",
-        inserted,
-      });
-    }
-
-    const data = await res.json();
-    const rows = data?.COOKRCP01?.row;
-    if (!rows || rows.length === 0) {
-      if (start === 1) {
-        return NextResponse.json({
-          error: "API에서 데이터를 받지 못했습니다.",
-          inserted,
-        });
-      }
-      break;
-    }
-
-    for (const row of rows) {
-      const { data: recipe, error: recipeErr } = await supabase
-        .from("recipes")
-        .insert({
-          name: row.RCP_NM,
-          cooking_method: row.RCP_WAY2 || null,
-          category: row.RCP_PAT2 || null,
-          weight: row.INFO_WGT || null,
-          calories: row.INFO_ENG ? `${row.INFO_ENG}kcal` : null,
-          image_large: row.ATT_FILE_NO_MAIN || null,
-          image_small: row.ATT_FILE_NO_MK || null,
-          ingredients_raw: row.RCP_PARTS_DTLS || null,
-        })
-        .select("id")
-        .single();
-
-      if (recipeErr || !recipe) continue;
-
-      const ingredients = parseIngredients(row.RCP_PARTS_DTLS || "");
-      if (ingredients.length > 0) {
-        await supabase.from("ingredients").insert(
-          ingredients.map((ing) => ({
-            recipe_id: recipe.id,
-            name: ing.name,
-            amount: ing.amount,
-            type: ing.type,
-          })),
-        );
-      }
-
-      const steps = [];
-      for (let i = 1; i <= 20; i++) {
-        const desc = row[`MANUAL${String(i).padStart(2, "0")}`];
-        const img = row[`MANUAL_IMG${String(i).padStart(2, "0")}`];
-        if (desc && desc.trim()) {
-          steps.push({
-            recipe_id: recipe.id,
-            step_order: i,
-            description: desc.trim(),
-            image: img || null,
-          });
-        }
-      }
-      if (steps.length > 0) {
-        await supabase.from("recipe_steps").insert(steps);
-      }
-
-      await supabase.from("nutrition").insert({
-        recipe_id: recipe.id,
-        calories: row.INFO_ENG || null,
-        carbs: row.INFO_CAR ? `${row.INFO_CAR}g` : null,
-        protein: row.INFO_PRO ? `${row.INFO_PRO}g` : null,
-        fat: row.INFO_FAT ? `${row.INFO_FAT}g` : null,
-        sodium: row.INFO_NA ? `${row.INFO_NA}mg` : null,
-      });
-
-      inserted++;
-    }
+  const res = await fetch(url);
+  if (!res.ok) {
+    return NextResponse.json({
+      error: "외부 API 요청에 실패했습니다.",
+      page: pageParam,
+    });
   }
 
-  return NextResponse.json({ success: true, inserted });
+  const data = await res.json();
+  const rows = data?.COOKRCP01?.row;
+  if (!rows || rows.length === 0) {
+    return NextResponse.json({
+      success: true,
+      page: pageParam,
+      inserted: 0,
+      done: true,
+    });
+  }
+
+  let inserted = 0;
+
+  for (const row of rows) {
+    const { data: recipe, error: recipeErr } = await supabase
+      .from("recipes")
+      .insert({
+        name: row.RCP_NM,
+        cooking_method: row.RCP_WAY2 || null,
+        category: row.RCP_PAT2 || null,
+        weight: row.INFO_WGT || null,
+        calories: row.INFO_ENG ? `${row.INFO_ENG}kcal` : null,
+        image_large: row.ATT_FILE_NO_MAIN || null,
+        image_small: row.ATT_FILE_NO_MK || null,
+        ingredients_raw: row.RCP_PARTS_DTLS || null,
+      })
+      .select("id")
+      .single();
+
+    if (recipeErr || !recipe) continue;
+
+    const ingredients = parseIngredients(row.RCP_PARTS_DTLS || "");
+    if (ingredients.length > 0) {
+      await supabase.from("ingredients").insert(
+        ingredients.map((ing) => ({
+          recipe_id: recipe.id,
+          name: ing.name,
+          amount: ing.amount,
+          type: ing.type,
+        })),
+      );
+    }
+
+    const steps = [];
+    for (let i = 1; i <= 20; i++) {
+      const desc = row[`MANUAL${String(i).padStart(2, "0")}`];
+      const img = row[`MANUAL_IMG${String(i).padStart(2, "0")}`];
+      if (desc && desc.trim()) {
+        steps.push({
+          recipe_id: recipe.id,
+          step_order: i,
+          description: desc.trim(),
+          image: img || null,
+        });
+      }
+    }
+    if (steps.length > 0) {
+      await supabase.from("recipe_steps").insert(steps);
+    }
+
+    await supabase.from("nutrition").insert({
+      recipe_id: recipe.id,
+      calories: row.INFO_ENG || null,
+      carbs: row.INFO_CAR ? `${row.INFO_CAR}g` : null,
+      protein: row.INFO_PRO ? `${row.INFO_PRO}g` : null,
+      fat: row.INFO_FAT ? `${row.INFO_FAT}g` : null,
+      sodium: row.INFO_NA ? `${row.INFO_NA}mg` : null,
+    });
+
+    inserted++;
+  }
+
+  return NextResponse.json({
+    success: true,
+    page: pageParam,
+    inserted,
+    hasMore: rows.length === batchSize,
+  });
 }
