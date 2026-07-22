@@ -95,12 +95,12 @@ export default function Home() {
     await supabase.auth.signOut();
     setIsGuest(false);
     setGuestLimitReached(false);
-    setPhase("auth");
+    setPhase("video");
   }
 
   function handleGuestExit() {
     setIsGuest(false);
-    setPhase("auth");
+    setPhase("video");
   }
 
   if (phase === "loading") return null;
@@ -114,11 +114,17 @@ export default function Home() {
         <div className="fixed inset-0 z-30 bg-black flex items-center justify-center">
           <video
             src="/open.mp4"
-            autoPlay
-            muted
             playsInline
             onEnded={handleVideoComplete}
-            ref={(el) => { if (el) el.playbackRate = 2; }}
+            ref={(el) => {
+              if (!el) return;
+              el.playbackRate = 1.4;
+              el.muted = false;
+              el.play().catch(() => {
+                el.muted = true;
+                el.play();
+              });
+            }}
             className="w-full h-full object-cover"
           />
         </div>
