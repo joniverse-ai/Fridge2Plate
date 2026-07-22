@@ -9,7 +9,7 @@ import AuthForm from "@/components/AuthForm";
 import FridgeLanding from "@/components/FridgeLanding";
 import IngredientInput from "@/components/IngredientInput";
 
-type Phase = "loading" | "splash" | "auth" | "main";
+type Phase = "loading" | "video" | "splash" | "auth" | "main";
 
 const GUEST_MAX_SEARCHES = 3;
 
@@ -37,7 +37,7 @@ export default function Home() {
           setGuestSearchCount(count);
           setPhase("main");
         } else {
-          setPhase("splash");
+          setPhase("video");
         }
       }
     });
@@ -52,6 +52,10 @@ export default function Home() {
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  const handleVideoComplete = useCallback(() => {
+    setPhase("splash");
   }, []);
 
   const handleSplashComplete = useCallback(() => {
@@ -106,6 +110,19 @@ export default function Home() {
 
   return (
     <>
+      {phase === "video" && (
+        <div className="fixed inset-0 z-30 bg-black flex items-center justify-center">
+          <video
+            src="/open.mp4"
+            autoPlay
+            muted
+            playsInline
+            onEnded={handleVideoComplete}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      )}
+
       {showBackground && (
         <div className="fixed inset-0 z-0">
           <Image
