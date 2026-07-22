@@ -118,6 +118,7 @@ export default function Home() {
             muted
             playsInline
             onEnded={handleVideoComplete}
+            ref={(el) => { if (el) el.playbackRate = 2; }}
             className="w-full h-full object-cover"
           />
         </div>

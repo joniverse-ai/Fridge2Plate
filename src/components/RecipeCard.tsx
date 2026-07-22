@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MatchedRecipe } from "@/lib/types";
+import { isSafeImageUrl } from "@/lib/safe-image";
 
 function matchColor(rate: number) {
   if (rate >= 70) return "text-match-high";
@@ -21,7 +22,7 @@ export default function RecipeCard({ recipe }: { recipe: MatchedRecipe }) {
     >
       {/* 이미지 영역 */}
       <div className="relative h-40 md:h-48 bg-muted flex items-center justify-center">
-        {recipe.image_large ? (
+        {isSafeImageUrl(recipe.image_large) ? (
           <img
             src={recipe.image_large}
             alt={recipe.name}

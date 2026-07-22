@@ -30,7 +30,16 @@ function parseIngredients(raw: string) {
     });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const authHeader = request.headers.get("authorization");
+  const adminSecret = process.env.ADMIN_SECRET;
+  if (!adminSecret || authHeader !== `Bearer ${adminSecret}`) {
+    return NextResponse.json(
+      { error: "인증이 필요합니다." },
+      { status: 401 },
+    );
+  }
+
   if (!COOKRCP_API_KEY || COOKRCP_API_KEY === "your_cookrcp_api_key_here") {
     return NextResponse.json(
       { error: "COOKRCP_API_KEY가 설정되지 않았습니다." },
@@ -58,9 +67,8 @@ export async function POST() {
     const res = await fetch(url);
     if (!res.ok) {
       return NextResponse.json({
-        error: `API 요청 실패 (${res.status})`,
+        error: "외부 API 요청에 실패했습니다.",
         inserted,
-        url: url.replace(encodedKey, "***"),
       });
     }
 
@@ -71,7 +79,6 @@ export async function POST() {
         return NextResponse.json({
           error: "API에서 데이터를 받지 못했습니다.",
           inserted,
-          apiResponse: data,
         });
       }
       break;

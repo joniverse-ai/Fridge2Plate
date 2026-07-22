@@ -23,10 +23,14 @@ export async function GET(request: NextRequest) {
       nutrition (*)
     `,
     )
-    .order("id");
+    .order("id")
+    .limit(200);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: "레시피 검색 중 오류가 발생했습니다." },
+      { status: 500 },
+    );
   }
 
   const normalized = userIngredients.map((i) => i.trim().toLowerCase());

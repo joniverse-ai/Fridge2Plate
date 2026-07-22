@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { Recipe } from "@/lib/types";
+import { isSafeImageUrl } from "@/lib/safe-image";
 import MissingIngredients from "@/components/MissingIngredients";
 import YoutubeEmbed from "@/components/YoutubeEmbed";
 
@@ -104,7 +105,7 @@ function RecipeDetail() {
       </div>
 
       <div className="w-full h-48 md:h-64 bg-muted rounded-2xl flex items-center justify-center mb-6">
-        {recipe.image_large ? (
+        {isSafeImageUrl(recipe.image_large) ? (
           <img
             src={recipe.image_large}
             alt={recipe.name}
@@ -194,9 +195,9 @@ function RecipeDetail() {
               </div>
               <div className="flex-1 pt-1">
                 <p className="text-sm md:text-base">{step.description}</p>
-                {step.image && (
+                {isSafeImageUrl(step.image) && (
                   <img
-                    src={step.image}
+                    src={step.image!}
                     alt={`${step.order}단계`}
                     className="mt-2 rounded-xl w-full max-w-sm"
                   />
