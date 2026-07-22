@@ -52,14 +52,30 @@ export async function POST() {
 
   for (let start = 1; start <= 1000; start += pageSize) {
     const end = start + pageSize - 1;
-    const url = `https://openapi.foodsafetykorea.go.kr/api/${COOKRCP_API_KEY}/COOKRCP01/json/${start}/${end}`;
+    const encodedKey = encodeURIComponent(COOKRCP_API_KEY);
+    const url = `https://openapi.foodsafetykorea.go.kr/api/${encodedKey}/COOKRCP01/json/${start}/${end}`;
 
     const res = await fetch(url);
-    if (!res.ok) break;
+    if (!res.ok) {
+      return NextResponse.json({
+        error: `API 요청 실패 (${res.status})`,
+        inserted,
+        url: url.replace(encodedKey, "***"),
+      });
+    }
 
     const data = await res.json();
     const rows = data?.COOKRCP01?.row;
-    if (!rows || rows.length === 0) break;
+    if (!rows || rows.length === 0) {
+      if (start === 1) {
+        return NextResponse.json({
+          error: "API에서 데이터를 받지 못했습니다.",
+          inserted,
+          apiResponse: data,
+        });
+      }
+      break;
+    }
 
     for (const row of rows) {
       const { data: recipe, error: recipeErr } = await supabase
