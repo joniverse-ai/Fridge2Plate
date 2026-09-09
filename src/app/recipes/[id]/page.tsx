@@ -1,39 +1,33 @@
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { Recipe } from "@/lib/types";
-import { isSafeImageUrl } from "@/lib/safe-image";
-import MissingIngredients from "@/components/MissingIngredients";
+import { AIRecipe } from "@/lib/types";
 import YoutubeEmbed from "@/components/YoutubeEmbed";
 
 function RecipeDetail() {
   const params = useParams();
-  const searchParams = useSearchParams();
-  const id = Number(params.id);
+  const id = params.id as string;
 
-  const userIngredients = (searchParams.get("ingredients") || "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-
-  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [recipe, setRecipe] = useState<AIRecipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/recipes/${id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.recipe) {
-          setRecipe(data.recipe);
-          fetch(`/api/youtube?q=${encodeURIComponent(data.recipe.name)}`)
-            .then((res) => res.json())
-            .then((yt) => setYoutubeVideoId(yt.videoId));
-        }
-      })
-      .finally(() => setLoading(false));
+    try {
+      const stored = sessionStorage.getItem(`recipe-${id}`);
+      if (stored) {
+        const parsed = JSON.parse(stored) as AIRecipe;
+        setRecipe(parsed);
+
+        fetch(`/api/youtube?q=${encodeURIComponent(parsed.name)}`)
+          .then((res) => res.json())
+          .then((yt) => setYoutubeVideoId(yt.videoId))
+          .catch(() => {});
+      }
+    } catch {}
+    setLoading(false);
   }, [id]);
 
   if (loading) {
@@ -49,6 +43,9 @@ function RecipeDetail() {
       <main className="flex-1 flex flex-col items-center justify-center py-20">
         <p className="text-4xl mb-4">🤷</p>
         <p className="text-lg font-medium">레시피를 찾을 수 없어요</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          검색 결과에서 다시 선택해주세요
+        </p>
         <Link
           href="/"
           className="mt-6 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition"
@@ -58,26 +55,6 @@ function RecipeDetail() {
       </main>
     );
   }
-
-  const missingMain = recipe.ingredients
-    .filter((i) => i.type === "main")
-    .filter(
-      (i) =>
-        !userIngredients.some(
-          (u) => i.name.includes(u) || u.includes(i.name),
-        ),
-    )
-    .map((i) => i.name);
-
-  const missingSauce = recipe.ingredients
-    .filter((i) => i.type === "sauce")
-    .filter(
-      (i) =>
-        !userIngredients.some(
-          (u) => i.name.includes(u) || u.includes(i.name),
-        ),
-    )
-    .map((i) => i.name);
 
   return (
     <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6">
@@ -104,27 +81,47 @@ function RecipeDetail() {
         <h1 className="text-xl md:text-2xl font-bold">{recipe.name}</h1>
       </div>
 
-      <div className="w-full h-48 md:h-64 bg-muted rounded-2xl flex items-center justify-center mb-6">
-        {isSafeImageUrl(recipe.image_large) ? (
-          <img
-            src={recipe.image_large}
-            alt={recipe.name}
-            className="w-full h-full object-cover rounded-2xl"
-          />
+      <div className="w-full bg-muted rounded-2xl overflow-hidden flex items-center justify-center mb-6">
+        {recipe.image_url ? (
+          <div className="w-full">
+            <img
+              src={recipe.image_url}
+              alt={recipe.name}
+              className="w-full h-48 md:h-64 object-cover"
+            />
+            {recipe.image_credit && (
+              <p className="text-xs text-muted-foreground text-right px-3 py-1">
+                Photo by{" "}
+                <a
+                  href={`${recipe.image_credit.link}?utm_source=fridge2plate&utm_medium=referral`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  {recipe.image_credit.name}
+                </a>{" "}
+                on Unsplash
+              </p>
+            )}
+          </div>
         ) : (
-          <span className="text-6xl">🍽️</span>
+          <div className="py-8">
+            <span className="text-6xl">🍽️</span>
+          </div>
         )}
       </div>
 
+      <p className="text-muted-foreground mb-4">{recipe.description}</p>
+
       <div className="flex flex-wrap gap-2 mb-6">
         <span className="text-sm px-3 py-1 bg-muted text-muted-foreground rounded-full">
-          {recipe.cooking_method}
+          {recipe.difficulty}
         </span>
         <span className="text-sm px-3 py-1 bg-muted text-muted-foreground rounded-full">
-          {recipe.category}
+          {recipe.cooking_time}
         </span>
         <span className="text-sm px-3 py-1 bg-muted text-muted-foreground rounded-full">
-          {recipe.calories}
+          {recipe.servings}
         </span>
       </div>
 
@@ -139,102 +136,64 @@ function RecipeDetail() {
         <h2 className="text-lg font-bold mb-3">재료</h2>
         <div className="bg-card rounded-2xl border border-border p-4">
           <div className="space-y-2">
-            {recipe.ingredients.map((ing) => {
-              const isOwned = userIngredients.some(
-                (u) => ing.name.includes(u) || u.includes(ing.name),
-              );
-              return (
-                <div
-                  key={ing.name}
-                  className="flex items-center justify-between py-1.5"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-2 h-2 rounded-full ${isOwned ? "bg-match-high" : "bg-match-low"}`}
-                    />
-                    <span
-                      className={
-                        isOwned
-                          ? "text-card-foreground"
-                          : "text-muted-foreground"
-                      }
-                    >
-                      {ing.name}
-                    </span>
-                    <span className="text-xs px-1.5 py-0.5 bg-muted text-muted-foreground rounded">
-                      {ing.type === "main" ? "메인" : "양념"}
-                    </span>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    {ing.amount}
+            {recipe.ingredients.map((ing) => (
+              <div
+                key={ing.name}
+                className="flex items-center justify-between py-1.5"
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`w-2 h-2 rounded-full ${ing.owned ? "bg-match-high" : "bg-match-low"}`}
+                  />
+                  <span
+                    className={
+                      ing.owned
+                        ? "text-card-foreground"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    {ing.name}
                   </span>
+                  {!ing.owned && (
+                    <span className="text-xs px-1.5 py-0.5 bg-muted text-muted-foreground rounded">
+                      추가 필요
+                    </span>
+                  )}
                 </div>
-              );
-            })}
+                <span className="text-sm text-muted-foreground">
+                  {ing.amount}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {(missingMain.length > 0 || missingSauce.length > 0) && (
-        <section className="mb-8">
-          <h2 className="text-lg font-bold mb-3">부족한 재료 확인</h2>
-          <MissingIngredients
-            missingMain={missingMain}
-            missingSauce={missingSauce}
-          />
-        </section>
-      )}
-
       <section className="mb-8">
         <h2 className="text-lg font-bold mb-3">조리 순서</h2>
         <div className="space-y-4">
-          {recipe.steps.map((step) => (
-            <div key={step.order} className="flex gap-4">
+          {recipe.steps.map((step, idx) => (
+            <div key={idx} className="flex gap-4">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
-                {step.order}
+                {idx + 1}
               </div>
               <div className="flex-1 pt-1">
-                <p className="text-sm md:text-base">{step.description}</p>
-                {isSafeImageUrl(step.image) && (
-                  <img
-                    src={step.image!}
-                    alt={`${step.order}단계`}
-                    className="mt-2 rounded-xl w-full max-w-sm"
-                  />
-                )}
+                <p className="text-sm md:text-base">{step}</p>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="mb-8">
-        <h2 className="text-lg font-bold mb-3">영양 정보</h2>
-        <div className="grid grid-cols-5 gap-2">
-          {[
-            {
-              label: "칼로리",
-              value: recipe.nutrition.calories,
-              unit: "kcal",
-            },
-            { label: "탄수화물", value: recipe.nutrition.carbs, unit: "" },
-            { label: "단백질", value: recipe.nutrition.protein, unit: "" },
-            { label: "지방", value: recipe.nutrition.fat, unit: "" },
-            { label: "나트륨", value: recipe.nutrition.sodium, unit: "" },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className="text-center p-3 bg-card rounded-xl border border-border"
-            >
-              <p className="text-xs text-muted-foreground">{item.label}</p>
-              <p className="text-sm font-bold mt-1">
-                {item.value}
-                {item.unit}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+      {recipe.tip && (
+        <section className="mb-8">
+          <div className="bg-tag-bg rounded-2xl p-4">
+            <p className="text-sm">
+              <span className="font-bold">💡 팁:</span> {recipe.tip}
+            </p>
+          </div>
+        </section>
+      )}
     </main>
   );
 }
