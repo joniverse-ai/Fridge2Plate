@@ -40,3 +40,23 @@ export interface MatchedRecipe extends Recipe {
   missing_main: string[];
   missing_sauce: string[];
 }
+
+export interface AIRecipe {
+  id: string;
+  name: string;
+  description: string;
+  difficulty: "쉬움" | "보통" | "어려움";
+  cooking_time: string;
+  servings: string;
+  ingredients: AIIngredient[];
+  steps: string[];
+  tip: string;
+  image_url?: string;
+  image_credit?: { name: string; link: string };
+}
+
+export interface AIIngredient {
+  name: string;
+  amount: string;
+  owned: boolean;
+}
